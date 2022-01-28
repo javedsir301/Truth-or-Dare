@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">Truth OR Dare</string>
+    <string name="truth">Truth</string>
+    <string name="dare_page">Dare page</string>
+    <string name="spin">spin</string>
+    <string name="dare">Dare</string>
+    <string name="truth_page">truth_page</string>
+    <string name="truth_question">Truth Question</string>
+    <string name="dare_question">Dare Question</string>
+</resources>
