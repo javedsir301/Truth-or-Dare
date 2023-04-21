@@ -1,0 +1,109 @@
+//Cart timestamp
+
+	add_action( 'woocommerce_add_to_cart', 'set_cart_created_timestamp' );
+	function set_cart_created_timestamp() {
+		if ( ! WC()->session->get( 'cart_created_timestamp' ) ) {
+			WC()->session->set( 'cart_created_timestamp', time() );
+		}
+	}
+
+	// Set order details in session
+add_action( 'woocommerce_checkout_create_order', 'set_order_details_in_session' );
+function set_order_details_in_session( $order ) {
+
+    // Get the order ID
+    $order_id = $order->get_id();
+
+    // Set the order details in the session
+    WC()->session->set( 'order_details', array(
+        'order_id' => $order_id,
+        'order_key' => $order->get_order_key()
+    ) );
+}
+
+		//Abandoned Cart
+		add_action( 'woocommerce_cart_actions', 'capture_abandoned_cart_details' );
+		add_action( 'woocommerce_before_checkout_form', 'capture_abandoned_cart_details' );
+
+	function capture_abandoned_cart_details() {
+
+// Check if user is logged in and order details are not set
+if ( is_user_logged_in() && ! WC()->session->get( 'order_details' ) ) {
+    // Create new order and set details in session
+    $order = wc_create_order( array( 'customer_id' => get_current_user_id() ) );
+    set_order_details_in_session( $order );
+}
+
+		$options = get_option( 'buybot_notifications_option_name' );
+		// Get the cart items
+		$cart_items = WC()->cart->get_cart();
+
+		// Get the timestamp of the cart(added)
+		$cart_timestamp = WC()->session->get( 'cart_created_timestamp' );
+
+		// Convert the timestamp to human-readable format
+		$cart_timestamp_formatted = date( 'Y-m-d H:i:s', $cart_timestamp );
+
+		// Get the order details from the session
+		$order_details = WC()->session->get( 'order_details' );
+		file_put_contents( ABSPATH . 'orderDetailsInSession.txt', json_encode( $order_details ) );
+
+		//$order_key = isset( $order_details['order_key'] ) ? $order_details['order_key'] : '';
+		
+
+		//$order_key = WC()->session->get( 'order_awaiting_payment' );
+	
+// Check if the cart is empty or not
+if ( ! empty( $cart_items ) ) {
+	//if ( ! empty( $cart_items ) && $order_key == null) {
+
+		//if ( ! empty( $cart_items ) && time() > ( $cart_timestamp + 60  ) ) { //( 60 * 60 )
+			// Check if the cart is abandoned
+			// $abandoned_timeout = 1 * 60; // 1 minutes
+			// $current_timestamp = time();
+			// if ( $current_timestamp - $cart_timestamp > $abandoned_timeout ) {
+
+		// Loop through each cart item to get its details
+		foreach ( $cart_items as $cart_item_key => $cart_item ) {
+			$product_name = $cart_item['data']->get_name();
+			$item_url = $cart_item['data']->get_permalink();
+			$item_quantity = $cart_item['quantity'];
+			$item_images = array();
+			// Get all image sources for the item
+			$product_images = $cart_item['data']->get_gallery_image_ids();
+			if ( $product_images ) {
+				foreach ( $product_images as $image_id ) {
+					$image_src = wp_get_attachment_image_src( $image_id, 'full' )[0];
+					array_push( $item_images, $image_src );
+				}
+			} else {
+				$image_id = $cart_item['data']->get_image_id();
+				$image_src = wp_get_attachment_image_src( $image_id, 'full' )[0];
+				array_push( $item_images, $image_src );
+			}
+
+			// // Get the order key for the cart item
+			// $order_key = WC()->session->get( 'order_awaiting_payment' );
+
+			// Log the abandoned cart item details to a file or database table
+			$email = WC()->customer->get_billing_email();
+			$name = WC()->customer->get_billing_first_name() . ' ' . WC()->customer->get_billing_last_name();
+			$phone = WC()->customer->get_billing_phone();
+			$log_data = array(
+				'access_key' => $options['api_key'],
+				'cart_created_timestamp' => $cart_timestamp_formatted,
+				'email' => $email,
+				'name' => $name,
+				'phone' => $phone,
+				'product_name' => $product_name,
+				'item_url' => $item_url,
+				'item_images' => $item_images,
+				'item_quantity' => $item_quantity,
+				//'order_key' => $order_key, // Add the order key to the log data
+			);
+			file_put_contents( ABSPATH . 'abandoned_cart_details.txt', json_encode( $log_data ) . PHP_EOL, FILE_APPEND );
+	}
+
+	}
+
+}
