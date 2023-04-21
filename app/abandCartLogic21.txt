@@ -1,0 +1,123 @@
+if (!defined('ABSPATH')) exit; 
+
+require_once(ABSPATH . 'wp-load.php');
+require_once(ABSPATH . '/wp-includes/pluggable.php');
+require_once(ABSPATH . '/wp-content/plugins/woocommerce/includes/wc-cart-functions.php');
+---------------
+function get_abandoned_cart_details() {
+    global $wpdb;
+
+    // Get abandoned carts
+    $carts = $wpdb->get_results("
+        SELECT * FROM {$wpdb->prefix}woocommerce_sessions
+        WHERE (
+            SELECT COUNT(*) 
+            FROM {$wpdb->prefix}woocommerce_sessionmeta 
+            WHERE woocommerce_sessions.session_id = {$wpdb->prefix}woocommerce_sessionmeta.session_id
+            AND {$wpdb->prefix}woocommerce_sessionmeta.meta_key = '_woocommerce_persistent_cart'
+        ) = 0
+        AND (
+            SELECT COUNT(*) 
+            FROM {$wpdb->prefix}woocommerce_sessionmeta 
+            WHERE woocommerce_sessions.session_id = {$wpdb->prefix}woocommerce_sessionmeta.session_id
+            AND {$wpdb->prefix}woocommerce_sessionmeta.meta_key = '_cart_hash'
+            AND {$wpdb->prefix}woocommerce_sessionmeta.meta_value != ''
+        ) = 1
+        AND (
+            SELECT COUNT(*) 
+            FROM {$wpdb->prefix}woocommerce_sessionmeta 
+            WHERE woocommerce_sessions.session_id = {$wpdb->prefix}woocommerce_sessionmeta.session_id
+            AND {$wpdb->prefix}woocommerce_sessionmeta.meta_key = '_wpwoocommerce_session_'
+            AND CAST({$wpdb->prefix}woocommerce_sessionmeta.meta_value AS UNSIGNED) + 60*60*24 > UNIX_TIMESTAMP()
+        ) = 1
+    ");
+
+    // Get cart items
+    $cart_items = array();
+    foreach ($carts as $cart) {
+        $cart_id = $cart->session_id;
+        $cart_data = maybe_unserialize($cart->session_value);
+
+        if (isset($cart_data['cart']) && !empty($cart_data['cart'])) {
+            foreach ($cart_data['cart'] as $item_key => $item) {
+                $cart_items[] = array(
+                    'cart_id' => $cart_id,
+                    'product_id' => $item['product_id'],
+                    'quantity' => $item['quantity']
+                );
+            }
+        }
+    }
+
+    return $cart_items;
+}
+----------------------
+function generate_product_details() {
+    $options = get_option('buybot_notifications_option_name');
+
+    // Get abandoned cart details
+    $cart_items = get_abandoned_cart_details();
+
+    $args = array('post_type' => 'product', 'posts_per_page' => -1);
+    $products = get_posts($args);
+
+    $product_details = array();
+    foreach ($products as $product) {
+        $product_id = $product->ID;
+        $product_name = $product->post_title;
+        $product_price = get_post_meta($product_id, '_price', true);
+        $product_quantity = get_post_meta($product_id, '_stock', true);
+        $product_stock_status = get_post_meta($product_id, '_stock_status', true);
+-------------------------
+-------------------------
+-------------------------
+<?php
+
+// Hook into WordPress init action
+add_action( 'init', 'get_abandoned_carts_details' );
+
+function get_abandoned_carts_details() {
+    
+    // Set the time range for abandoned carts (in minutes)
+    $abandoned_cart_time = 60; // 60 minutes
+
+    global $wpdb;
+
+    // Get all abandoned carts
+    $results = $wpdb->get_results("
+        SELECT * FROM {$wpdb->prefix}woocommerce_sessions
+        WHERE session_expiration > " . (time() - ($abandoned_cart_time * 60)) . "
+        AND session_data NOT LIKE '%"completed_order_id"%'
+    ");
+
+    // Loop through each abandoned cart and retrieve the details
+    foreach ($results as $result) {
+        $session_data = unserialize($result->session_data);
+
+        // Retrieve cart items
+        $cart_items = $session_data['cart'];
+
+        // Retrieve customer details
+        $customer_id = $session_data['customer_id'];
+        $customer_data = get_userdata($customer_id);
+        $customer_email = $customer_data->user_email;
+        $customer_first_name = $customer_data->first_name;
+        $customer_last_name = $customer_data->last_name;
+
+        // Retrieve cart total
+        $cart_total = $session_data['cart_totals']['total'];
+
+        // Output cart details
+        echo "Abandoned Cart Details:\n";
+        echo "------------------------\n";
+        echo "Customer Name: $customer_first_name $customer_last_name\n";
+        echo "Customer Email: $customer_email\n";
+        echo "Cart Total: $cart_total\n";
+        echo "Cart Items:\n";
+
+        foreach ($cart_items as $cart_item_key => $cart_item) {
+            echo $cart_item['quantity'] . " x " . $cart_item['data']->get_name() . " - " . wc_price($cart_item['line_total']) . "\n";
+        }
+    }
+}
+
